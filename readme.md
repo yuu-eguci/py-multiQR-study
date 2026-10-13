@@ -1,13 +1,13 @@
 py-multiQR-study
 ===
 
-🐍 OpenCV の `QRCodeDetector.detectAndDecodeMulti` で、1枚の画像・動画・カメラ映像から複数の QR コードを同時に読み取る勉強用リポジトリです。
+OpenCV で、画像・動画・カメラ映像から複数の QR コードを読むやつ。
 
 - Docker: 対応!
 - Python: 3.14!
 - Linter: ruff!
 - Test: pytest!
-- opencv-python-headless 5.0.0.93!
+- opencv-python-headless: 5.0.0.93!
 
 ## パッと実行してみたい
 
@@ -15,56 +15,44 @@ py-multiQR-study
 docker build -t py-multiqr-study .
 mkdir -p out
 
-# サンプルの QR 画像と動画を out/ に作ります。
+# サンプルの画像と動画を作る
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/out" py-multiqr-study \
   python make_samples.py --out-dir /out
 
-# 画像から複数の QR コードを読み取り、枠を描いた画像を保存します。(foo.py)
+# 画像を読んで、QR の枠つき画像を保存
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/out" py-multiqr-study \
   python foo.py /out/sample.png --output /out/sample_result.png
 
-# 動画を二値化してから読み取り、結果のフレームを保存します。(baz.py)
+# 動画を二値化して読み、結果のフレームも保存
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/out:/out" py-multiqr-study \
   python baz.py --video /out/sample.avi --no-window --save-frame --out-dir /out/frames
 ```
 
-こんな感じに表示されます。
+`hello-1`・`hello-2`・`テスト3` が表示される。
+`out/sample_result.png` に枠つき画像、`out/frames/` に元映像と二値化した映像を並べた画像ができるよ。
 
-```
-wrote /out/sample.png
-wrote /out/sample.avi
-hello-1
-hello-2
-テスト3
-wrote /out/sample_result.png
-frame 0001 (thresh 80): hello-1, hello-2, テスト3
-...
-frame 0012 (thresh 80): hello-1, hello-2, テスト3
-```
-
-`out/sample_result.png` には、読み取れた QR コードに緑の枠と文字列が描かれます。`out/frames/` には「元フレーム | 二値化して描画したフレーム」を横に並べた画像が保存されます。
-
-## スクリプト
+## どれを使う?
 
 | ファイル | やること |
-|---|---|
-| `foo.py` | 画像を読み込んで `detectAndDecodeMulti` をかけます。透過 PNG は白い背景に重ねてから読みます。`--output` を付けると枠を描いた画像を保存します(入力画像と同じファイルには保存しません)。 |
-| `bar.py` | カメラ(または動画)の映像に `detectAndDecodeMulti` をかけ、ウィンドウに表示します。読めた QR は緑、読めなかった QR は赤で囲みます。 |
-| `baz.py` | カメラ(または動画)の映像を二値化してから読み取ります。しきい値は `--thresh` で 0〜255 の整数を指定します(省略時は 80)。ウィンドウ表示中は `a` / `z` キーでしきい値を変えられます。`q` で終了します。 |
-| `make_samples.py` | `cv2.QRCodeEncoder` で、QR コードが3つ並んだサンプル画像と短い動画を作ります。 |
-| `multiqr.py` | 上のスクリプトが共通で使う読み取り・描画の処理です。 |
+| --- | --- |
+| `foo.py` | 画像を読む。`--output` で枠つき画像も保存。 |
+| `bar.py` | カメラや動画をそのまま読む。 |
+| `baz.py` | カメラや動画を二値化して読む。`--thresh` は 0〜255、既定は 80。 |
+| `make_samples.py` | QR が 3 つ並ぶ画像と、短い動画を作る。 |
 
-`bar.py` と `baz.py` の `--video` は、`0` のような半角数字ならカメラ番号、それ以外なら動画ファイルのパスとして扱います(省略時はカメラ 0 です)。`--no-window` を付けるとウィンドウを出さずに標準出力だけで動きます(Docker ではウィンドウを出せないのでこちらを使います)。
+動画ファイルなら `--video path/to/video.avi --no-window`。
+カメラ番号なら `--video 0`。省略してもカメラ 0 になる。
+Docker では `--no-window` を付けてね。
 
-読み取った文字列は、foo.py は1コード1行、bar.py と baz.py は1フレーム1行で表示します。制御文字や改行のような表示できない文字は `\x1b` や `\n` のようにエスケープして表示します。
+フレーム保存は `baz.py --save-frame --out-dir PATH`。
+Docker では上の例みたいに、書き込めるフォルダをマウントする。
+保存に失敗したら終了コード 1。入力画像そのものへの上書きはしない。
 
-`baz.py --save-frame` の保存先は `--out-dir` で指定します(省略時は `out/video`)。Docker ではイメージ内の `/app` に書き込めないので、上の例のようにマウントしたフォルダを指定してください。保存できなかったときはエラーを表示して終了コード 1 で止まります。
+透過 PNG は白背景に重ねて読む。
+読み取った改行や制御文字はエスケープして表示する。
+Docker では 67,108,864 ピクセルを超える画像は読み込まない。
 
-Docker イメージでは `OPENCV_IO_MAX_IMAGE_PIXELS` を 67108864(8192×8192)にしています。これより大きい画像は読み込まずに「画像を読み込めません」と表示します。
-
-## ローカルでカメラを使う
-
-カメラ映像をウィンドウで見るには、GUI 付きの opencv-python を使います。
+## 手元のカメラを使うなら
 
 ```bash
 python3.14 -m venv .venv
@@ -74,21 +62,24 @@ python bar.py
 python baz.py --video 0 --thresh 100
 ```
 
-## 開発
+`q` で終了。`baz.py` は `a` / `z` でしきい値を変えられる。
+実カメラと GUI の動作はまだ未確認。生成した画像・動画での読み取りは確認済みだよ。
+
+## テストとか
 
 ```bash
-docker build -t py-multiqr-study .
 docker run --rm py-multiqr-study ruff check .
 docker run --rm py-multiqr-study ruff format --check .
 docker run --rm py-multiqr-study pytest
 ```
 
-テストは合成した QR 画像・動画に対して実際に OpenCV で検出・デコードします。カメラはテスト用の偽キャプチャを差し込んで確かめます。
+テストでも、生成した画像・動画を本物の OpenCV で読む。カメラとウィンドウはテスト用の代役を使う。
 
-## 分かったこと
+## メモ
 
-- opencv.js には `detectAndDecodeMulti` がありません([nuxt-multiQR-study](https://github.com/yuu-eguci/nuxt-multiQR-study) で確認しました)。そのため、このリポジトリでは Python の OpenCV を使っています。
-- `detectAndDecodeMulti` は、1枚の画像に並んだ単一の QR コードを複数まとめて読めます。
-    - 二値化すると読みやすくなります(baz.py)。
-    - 連結 QR コードは `detectAndDecodeMulti` ではそもそも読めません。
-- baz.py は [OPTiM Tech Blog の記事](https://tech-blog.optim.co.jp/entry/2020/12/15/100000) のコードを元にしています。
+[nuxt-multiQR-study](https://github.com/yuu-eguci/nuxt-multiQR-study) から派生した Python 版。
+二値化が効くかは画像次第。ぼやけた画像では逆に読みにくくなることもある。
+QR の位置によって読み落とすこともあるので、読めた内容は確認してね。
+連結 QR の読み取りは、今回の仕上げでは再確認していない。
+
+`baz.py` は [OPTiM Tech Blog の記事](https://tech-blog.optim.co.jp/entry/2020/12/15/100000) を元にしているよ。
