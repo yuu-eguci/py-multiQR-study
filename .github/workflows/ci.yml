@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Build image
+        run: docker build -t py-multiqr-study .
+      - name: Ruff check
+        run: docker run --rm py-multiqr-study ruff check .
+      - name: Ruff format
+        run: docker run --rm py-multiqr-study ruff format --check .
+      - name: Pytest
+        run: docker run --rm py-multiqr-study pytest
