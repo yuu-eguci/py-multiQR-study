@@ -1,6 +1,7 @@
 import numpy as np
 
 import bar
+import make_samples
 
 
 def test_run_prints_texts_per_frame(sample_image, fake_capture_factory, capsys):
@@ -22,7 +23,6 @@ def test_run_skips_frames_without_qr(fake_capture_factory, capsys):
 
 
 def test_run_stops_when_camera_cannot_be_read(fake_capture_factory):
-    # 元の bar.py は read() が失敗し続けると無限ループしていました。
     capture = fake_capture_factory([])
 
     assert bar.run(capture, show_window=False) == 0
@@ -61,7 +61,6 @@ def test_main_reports_unopenable_source(tmp_path, capsys):
 
 
 def test_main_explains_no_window_on_headless_opencv(monkeypatch, sample_files, capsys):
-    # 元の bar.py / baz.py は GUI なしの環境だと Qt のエラーで異常終了していました。
     _, video_path = sample_files
 
     def headless_imshow(*_args):
@@ -71,3 +70,16 @@ def test_main_explains_no_window_on_headless_opencv(monkeypatch, sample_files, c
 
     assert bar.main(["--video", str(video_path)]) == 1
     assert "--no-window" in capsys.readouterr().err
+
+
+def test_main_treats_non_ascii_digit_as_path(capsys):
+    assert bar.main(["--video", "²", "--no-window"]) == 1
+    assert "開けません: ²" in capsys.readouterr().err
+
+
+def test_run_escapes_control_characters(fake_capture_factory, capsys):
+    frame = np.full((480, 480, 3), 255, np.uint8)
+    frame[120:360, 120:360] = make_samples.make_qr("A\x1b[31mRED\x1b[0m\nB")
+
+    assert bar.run(fake_capture_factory([frame]), show_window=False) == 1
+    assert capsys.readouterr().out.splitlines() == [r"frame 0001: A\x1b[31mRED\x1b[0m\nB"]

@@ -1,4 +1,5 @@
 import cv2
+import pytest
 
 import baz
 
@@ -9,13 +10,6 @@ def test_reader_binarizes_and_decodes(sample_image):
     codes = reader(sample_image, thresh=80)
 
     assert [c.text for c in codes] == ["hello-1", "hello-2", "テスト3"]
-    assert reader.img.shape == sample_image.shape
-
-
-def test_reader_clamps_threshold(sample_image):
-    reader = baz.QRCodeReader()
-
-    assert reader(sample_image, thresh=999) == []
     assert reader.img.shape == sample_image.shape
 
 
@@ -32,7 +26,6 @@ def test_run_saves_side_by_side_frames(sample_image, fake_capture_factory, tmp_p
 
 
 def test_main_with_out_dir_string_saves_frames(sample_files, tmp_path, capsys):
-    # 元の baz.py は --out_dir を渡すと str に .exists() を呼んで落ちていました。
     _, video_path = sample_files
     out_dir = tmp_path / "frames"
 
@@ -46,7 +39,6 @@ def test_main_with_out_dir_string_saves_frames(sample_files, tmp_path, capsys):
 
 
 def test_main_opens_camera_index_as_int(monkeypatch, sample_image, fake_capture_factory):
-    # 元の baz.py は --video 0 を文字列のまま VideoCapture に渡していました。
     opened = []
     capture = fake_capture_factory([sample_image])
 
@@ -79,3 +71,44 @@ def test_main_explains_no_window_on_headless_opencv(monkeypatch, sample_files, c
 
     assert baz.main(["--video", str(video_path)]) == 1
     assert "--no-window" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("thresh", ["-1", "256", "999"])
+def test_main_rejects_threshold_out_of_range(thresh, capsys):
+    with pytest.raises(SystemExit) as exc:
+        baz.main(["--video", "missing.avi", "--no-window", "--thresh", thresh])
+
+    assert exc.value.code == 2
+    assert "0 から 255" in capsys.readouterr().err
+
+
+def test_main_prints_threshold_in_use(sample_files, capsys):
+    _, video_path = sample_files
+
+    assert baz.main(["--video", str(video_path), "--no-window", "--thresh", "100"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "frame 0001 (thresh 100): hello-1, hello-2, テスト3"
+    )
+
+
+def test_main_reports_failed_frame_save(monkeypatch, sample_files, tmp_path, capsys):
+    _, video_path = sample_files
+    monkeypatch.setattr(cv2, "imwrite", lambda *_args: False)
+
+    argv = ["--video", str(video_path), "--no-window", "--save-frame", "--out-dir", str(tmp_path)]
+    assert baz.main(argv) == 1
+
+    captured = capsys.readouterr()
+    assert "保存できません" in captured.err
+    assert "--out-dir" in captured.err
+    assert len(captured.out.splitlines()) == 1
+
+
+def test_main_reports_unwritable_out_dir(sample_files, tmp_path, capsys):
+    _, video_path = sample_files
+    not_a_dir = tmp_path / "file.txt"
+    not_a_dir.write_text("x")
+
+    argv = ["--video", str(video_path), "--no-window", "--save-frame", "--out-dir", str(not_a_dir)]
+    assert baz.main(argv) == 1
+    assert "--out-dir" in capsys.readouterr().err

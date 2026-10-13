@@ -1,16 +1,17 @@
-"""画像を読み込んで detectAndDecodeMulti をかけるスクリプトです。
-
-nuxt-multiQR-study で opencv.js に detectAndDecodeMulti が無いことに失望して
-Python へやってきました。最初は「detectAndDecodeMulti の検出精度がとても低い」と
-感じていましたが、baz.py で二値化するとちゃんと読めることが分かりました。
-"""
+"""画像を読み込んで detectAndDecodeMulti をかけるスクリプトです。"""
 
 import argparse
+import sys
 from pathlib import Path
 
-import cv2
-
-from multiqr import decode_multi, draw_results
+from multiqr import (
+    ImageWriteError,
+    decode_multi,
+    draw_results,
+    format_text,
+    read_image,
+    write_image,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,21 +20,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, help="枠を描いた画像の保存先")
     args = parser.parse_args(argv)
 
-    img = cv2.imread(str(args.image))
+    img = read_image(args.image)
     if img is None:
         parser.error(f"画像を読み込めません: {args.image}")
+    if args.output and args.output.exists() and args.output.samefile(args.image):
+        parser.error(f"--output に入力画像と同じファイルは指定できません: {args.output}")
 
     codes = decode_multi(img)
     if not codes:
         print("QR コードが見つかりませんでした。")
         return 1
     for code in codes:
-        print(code.text or "(decode failed)")
+        print(format_text(code))
 
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        if not cv2.imwrite(str(args.output), draw_results(img, codes)):
-            parser.error(f"画像を保存できません: {args.output}")
+        try:
+            write_image(args.output, draw_results(img, codes))
+        except ImageWriteError as e:
+            print(e, file=sys.stderr)
+            return 1
         print(f"wrote {args.output}")
     return 0
 

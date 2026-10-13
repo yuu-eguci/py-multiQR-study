@@ -1,12 +1,6 @@
 """カメラ映像を二値化してから detectAndDecodeMulti をかけるスクリプトです。
 
 https://tech-blog.optim.co.jp/entry/2020/12/15/100000 のコードを元にしています。
-foo.py と bar.py では detectAndDecodeMulti の精度が悪いと思っていましたが、
-そうではありませんでした。
-
-- 二値化すると読みやすくなります。
-- 連結 QR コードはそもそも detectAndDecodeMulti では読めません。
-    - 単一の QR コードならちゃんと読めます。
 """
 
 import argparse
@@ -17,6 +11,7 @@ import cv2
 import numpy as np
 
 from multiqr import (
+    ImageWriteError,
     QRCode,
     WindowUnavailableError,
     decode_multi,
@@ -24,6 +19,7 @@ from multiqr import (
     format_texts,
     open_capture,
     show,
+    write_image,
 )
 
 WINDOW_NAME = "Camera frame"
@@ -38,7 +34,6 @@ class QRCodeReader:
         self._img = None
 
     def __call__(self, img: np.ndarray, thresh: int = 80) -> list[QRCode]:
-        thresh = min(max(thresh, 0), MAX_VAL)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         binary = cv2.threshold(gray, thresh, MAX_VAL, cv2.THRESH_BINARY)[1]
         codes = decode_multi(binary, self.detector)
@@ -71,7 +66,7 @@ def run(capture, thresh: int = 80, show_window: bool = True, save_dir: Path | No
 
         combined = np.hstack([frame, reader.img])
         if save_dir is not None:
-            cv2.imwrite(str(save_dir / f"frame_{count:04}.png"), combined)
+            write_image(save_dir / f"frame_{count:04}.png", combined)
         if not show_window:
             continue
 
@@ -87,10 +82,19 @@ def run(capture, thresh: int = 80, show_window: bool = True, save_dir: Path | No
     return count
 
 
+def threshold(value: str) -> int:
+    thresh = int(value)
+    if not 0 <= thresh <= MAX_VAL:
+        raise argparse.ArgumentTypeError(f"0 から {MAX_VAL} の整数を指定してください: {value}")
+    return thresh
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="QRコードの複数同時検出デモ")
     parser.add_argument("--video", default="0", help="カメラ番号か動画ファイル [default: 0]")
-    parser.add_argument("--thresh", type=int, default=80, help="二値化のしきい値 [default: 80]")
+    parser.add_argument(
+        "--thresh", type=threshold, default=80, help="二値化のしきい値 0-255 [default: 80]"
+    )
     parser.add_argument(
         "--out-dir",
         "--out_dir",
@@ -108,8 +112,6 @@ def main(argv: list[str] | None = None) -> int:
     if capture is None:
         print(f"カメラまたは動画を開けません: {args.video}", file=sys.stderr)
         return 1
-    if args.save_frame:
-        args.out_dir.mkdir(parents=True, exist_ok=True)
     if not args.no_window:
         print("Key\n  [q]: Exit\n  [a]: Thresh += 5\n  [z]: Thresh -= 5")
 
@@ -122,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except WindowUnavailableError as e:
         print(e, file=sys.stderr)
+        return 1
+    except ImageWriteError as e:
+        print(f"{e}\n--out-dir に書き込めるフォルダを指定してください。", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         pass

@@ -48,13 +48,19 @@ frame 0012 (thresh 80): hello-1, hello-2, テスト3
 
 | ファイル | やること |
 |---|---|
-| `foo.py` | 画像を読み込んで `detectAndDecodeMulti` をかけます。`--output` を付けると枠を描いた画像を保存します。 |
+| `foo.py` | 画像を読み込んで `detectAndDecodeMulti` をかけます。透過 PNG は白い背景に重ねてから読みます。`--output` を付けると枠を描いた画像を保存します(入力画像と同じファイルには保存しません)。 |
 | `bar.py` | カメラ(または動画)の映像に `detectAndDecodeMulti` をかけ、ウィンドウに表示します。読めた QR は緑、読めなかった QR は赤で囲みます。 |
-| `baz.py` | カメラ(または動画)の映像を二値化してから読み取ります。ウィンドウ表示中は `a` / `z` キーで二値化のしきい値を変えられます。`q` で終了します。 |
+| `baz.py` | カメラ(または動画)の映像を二値化してから読み取ります。しきい値は `--thresh` で 0〜255 の整数を指定します(省略時は 80)。ウィンドウ表示中は `a` / `z` キーでしきい値を変えられます。`q` で終了します。 |
 | `make_samples.py` | `cv2.QRCodeEncoder` で、QR コードが3つ並んだサンプル画像と短い動画を作ります。 |
 | `multiqr.py` | 上のスクリプトが共通で使う読み取り・描画の処理です。 |
 
-`bar.py` と `baz.py` の `--video` は、`0` のような数字ならカメラ番号、それ以外なら動画ファイルのパスとして扱います(省略時はカメラ 0 です)。`--no-window` を付けるとウィンドウを出さずに標準出力だけで動きます(Docker ではウィンドウを出せないのでこちらを使います)。
+`bar.py` と `baz.py` の `--video` は、`0` のような半角数字ならカメラ番号、それ以外なら動画ファイルのパスとして扱います(省略時はカメラ 0 です)。`--no-window` を付けるとウィンドウを出さずに標準出力だけで動きます(Docker ではウィンドウを出せないのでこちらを使います)。
+
+読み取った文字列は、foo.py は1コード1行、bar.py と baz.py は1フレーム1行で表示します。制御文字や改行のような表示できない文字は `\x1b` や `\n` のようにエスケープして表示します。
+
+`baz.py --save-frame` の保存先は `--out-dir` で指定します(省略時は `out/video`)。Docker ではイメージ内の `/app` に書き込めないので、上の例のようにマウントしたフォルダを指定してください。保存できなかったときはエラーを表示して終了コード 1 で止まります。
+
+Docker イメージでは `OPENCV_IO_MAX_IMAGE_PIXELS` を 67108864(8192×8192)にしています。これより大きい画像は読み込まずに「画像を読み込めません」と表示します。
 
 ## ローカルでカメラを使う
 
@@ -81,9 +87,8 @@ docker run --rm py-multiqr-study pytest
 
 ## 分かったこと
 
-- [nuxt-multiQR-study](https://github.com/yuu-eguci/nuxt-multiQR-study) では opencv.js が `detectAndDecodeMulti` を持っていなかったので、Python で試しました。
-- foo.py と bar.py の段階では「`detectAndDecodeMulti` は精度が低い」と思っていましたが、そうではありませんでした。
+- opencv.js には `detectAndDecodeMulti` がありません([nuxt-multiQR-study](https://github.com/yuu-eguci/nuxt-multiQR-study) で確認しました)。そのため、このリポジトリでは Python の OpenCV を使っています。
+- `detectAndDecodeMulti` は、1枚の画像に並んだ単一の QR コードを複数まとめて読めます。
     - 二値化すると読みやすくなります(baz.py)。
-    - 単一の QR コードならちゃんと読めます。
     - 連結 QR コードは `detectAndDecodeMulti` ではそもそも読めません。
 - baz.py は [OPTiM Tech Blog の記事](https://tech-blog.optim.co.jp/entry/2020/12/15/100000) のコードを元にしています。

@@ -1,5 +1,12 @@
 .git
+.github
 .venv
-out
-docs
+.vscode
+.env
+.DS_Store
+.pytest_cache
+.ruff_cache
 **/__pycache__
+docs
+my-images
+out
