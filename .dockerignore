@@ -1,0 +1,5 @@
+.git
+.venv
+out
+docs
+**/__pycache__

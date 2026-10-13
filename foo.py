@@ -1,38 +1,42 @@
-"""
-pipenv install --python 3.11
-pipenv install opencv-python
+"""画像を読み込んで detectAndDecodeMulti をかけるスクリプトです。
 
-QR コードの画像を imread して、
-それを detectAndDecodeMulti するスクリプト。
-
-nuxt-multiQR-study で detectAndDecodeMulti が使えないことに失望して
-Python へやってきたのだが、
-なんか detectAndDecodeMulti の検出精度がめっちゃくちゃ低いので使い物にならない感。
+nuxt-multiQR-study で opencv.js に detectAndDecodeMulti が無いことに失望して
+Python へやってきました。最初は「detectAndDecodeMulti の検出精度がとても低い」と
+感じていましたが、baz.py で二値化するとちゃんと読めることが分かりました。
 """
 
-from numpy import ndarray
+import argparse
+from pathlib import Path
+
 import cv2
 
-mat: ndarray = cv2.imread('/Users/user/Desktop/sample.png', cv2.IMREAD_GRAYSCALE)
-assert mat is not None, 'ファイルないよ。'
+from multiqr import decode_multi, draw_results
 
-detector: cv2.QRCodeDetector = cv2.QRCodeDetector()
 
-# https://docs.opencv.org/4.x/de/dc3/classcv_1_1QRCodeDetector.html#a188b63ffa17922b2c65d8a0ab7b70775
-# tuple[bool, tuple, ndarray, tuple]
-# retval: bool 検出成功
-# decoded_info: tuple 検出できてもデコードできないときは ''
-# points: ndarray QR の四隅の座標
-retval, decoded_info, points, straight_qrcode = \
-    detector.detectAndDecodeMulti(mat)
-if retval:
-    # 検出成功
-    print(retval, decoded_info)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="画像から複数の QR コードを読み取ります。")
+    parser.add_argument("image", type=Path, help="読み取る画像")
+    parser.add_argument("--output", type=Path, help="枠を描いた画像の保存先")
+    args = parser.parse_args(argv)
 
-    img = cv2.polylines(mat, points.astype(int), True, (0, 255, 0), 3)
+    img = cv2.imread(str(args.image))
+    if img is None:
+        parser.error(f"画像を読み込めません: {args.image}")
 
-    for s, p in zip(decoded_info, points):
-        img = cv2.putText(img, s, p[0].astype(int),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
+    codes = decode_multi(img)
+    if not codes:
+        print("QR コードが見つかりませんでした。")
+        return 1
+    for code in codes:
+        print(code.text or "(decode failed)")
 
-    cv2.imwrite('/Users/user/Desktop/qr_DST.png', img)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        if not cv2.imwrite(str(args.output), draw_results(img, codes)):
+            parser.error(f"画像を保存できません: {args.output}")
+        print(f"wrote {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -141,3 +141,6 @@ cython_debug/
 my-images/*
 .DS_Store
 *.hdf5
+
+# make_samples.py などの出力先です。
+out/

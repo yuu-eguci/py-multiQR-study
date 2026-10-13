@@ -1,37 +1,65 @@
-"""
-pipenv install --python 3.11
-pipenv install opencv-python
+"""foo.py と同じく detectAndDecodeMulti をかけるスクリプトですが、こちらはカメラ映像を読みます。
 
-foo.py と同様に画像に detectAndDecodeMulti をかけるスクリプトだけど、
-こっちは VideoCapture でカメラを起動する。
-でもやっぱり foo.py と同じように検出精度がめっちゃくちゃ低い。
+--video に動画ファイルを渡すとカメラの代わりに使えます。
 """
+
+import argparse
+import sys
 
 import cv2
 
-camera_id = 0
-delay = 1
-window_name = 'OpenCV QR Code'
+from multiqr import (
+    WindowUnavailableError,
+    decode_multi,
+    draw_results,
+    format_texts,
+    open_capture,
+    show,
+)
 
-detector = cv2.QRCodeDetector()
-video_capture = cv2.VideoCapture(camera_id)
+WINDOW_NAME = "OpenCV QR Code"
 
-while True:
-    ret, frame = video_capture.read()
 
-    if ret:
-        ret_qr, decoded_info, points, _ = detector.detectAndDecodeMulti(frame)
-        if ret_qr:
-            for s, p in zip(decoded_info, points):
-                if s:
-                    print(s)
-                    color = (0, 255, 0)
-                else:
-                    color = (0, 0, 255)
-                frame = cv2.polylines(frame, [p.astype(int)], True, color, 8)
-        cv2.imshow(window_name, frame)
+def run(capture, show_window: bool = True, delay_ms: int = 1) -> int:
+    """フレームが読めなくなるか q キーが押されるまで読み取り、処理したフレーム数を返します。"""
+    detector = cv2.QRCodeDetector()
+    count = 0
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        count += 1
+        codes = decode_multi(frame, detector)
+        if codes:
+            print(f"frame {count:04}: {format_texts(codes)}")
+        if show_window and show(WINDOW_NAME, draw_results(frame, codes), delay_ms) == ord("q"):
+            break
+    if show_window and count:
+        cv2.destroyWindow(WINDOW_NAME)
+    return count
 
-    if cv2.waitKey(delay) & 0xFF == ord('q'):
-        break
 
-cv2.destroyWindow(window_name)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="カメラ映像から複数の QR コードを読み取ります。")
+    parser.add_argument("--video", default="0", help="カメラ番号か動画ファイル [default: 0]")
+    parser.add_argument("--no-window", action="store_true", help="ウィンドウを出さずに読み取ります")
+    args = parser.parse_args(argv)
+
+    capture = open_capture(args.video)
+    if capture is None:
+        print(f"カメラまたは動画を開けません: {args.video}", file=sys.stderr)
+        return 1
+    try:
+        run(capture, show_window=not args.no_window)
+    except WindowUnavailableError as e:
+        print(e, file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        pass
+    finally:
+        capture.release()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
